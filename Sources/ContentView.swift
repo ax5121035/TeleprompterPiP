@@ -53,13 +53,11 @@ struct ContentView: View {
                     draftTitle = item.title
                 }
             }
-            .alert("保存稿件", isPresented: $showSaveAlert) {
-                TextField("标题（可留空）", text: $draftTitle)
-                Button("保存") {
-                    store.addScript(title: draftTitle, text: draftText)
+            .sheet(isPresented: $showSaveAlert) {
+                SaveScriptSheet(initialTitle: draftTitle) { title in
+                    store.addScript(title: title, text: draftText)
                     draftTitle = ""
                 }
-                Button("取消", role: .cancel) {}
             }
             .onAppear {
                 syncEngine()
@@ -286,6 +284,41 @@ struct ContentView: View {
         Text("提示：悬浮窗内可直接用系统自带的播放/暂停、快进按钮控制；改字号和速度需切回本 App 调整，悬浮窗会实时更新。")
             .font(.caption)
             .foregroundColor(.secondary)
+    }
+}
+
+// MARK: - 保存稿件
+
+struct SaveScriptSheet: View {
+    let initialTitle: String
+    let onSave: (String) -> Void
+
+    @State private var title: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("稿件标题")) {
+                    TextField("不填则自动命名", text: $title)
+                }
+            }
+            .navigationTitle("保存稿件")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("保存") {
+                        onSave(title.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear { title = initialTitle }
+        }
     }
 }
 
