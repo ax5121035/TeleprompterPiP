@@ -1,8 +1,0 @@
-name: MacProbe
-on:
-  workflow_dispatch:
-jobs:
-  probe:
-    runs-on: macos-latest
-    steps:
-      - run: echo MAC_IS_ALIVE && sw_vers && uname -m
