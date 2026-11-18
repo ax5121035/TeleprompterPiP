@@ -12,7 +12,7 @@ struct ContentView: View {
     @AppStorage("teleprompter.firstLaunch") private var firstLaunch = true
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             VStack(spacing: 0) {
                 // 顶部状态条
                 statusBar
@@ -296,7 +296,7 @@ struct TemplateSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             List {
                 ForEach(ScriptTemplate.allCases) { tpl in
                     Button {
@@ -333,7 +333,7 @@ struct LibraryView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Group {
                 if store.scripts.isEmpty {
                     VStack(spacing: 12) {
