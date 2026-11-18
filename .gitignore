@@ -1,0 +1,13 @@
+# XcodeGen 生成物
+*.xcodeproj/
+
+# 构建产物
+DerivedData/
+build/
+Payload/
+*.ipa
+*.app/
+
+# 系统
+.DS_Store
+*.swp
