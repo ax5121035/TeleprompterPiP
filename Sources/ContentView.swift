@@ -314,7 +314,7 @@ struct SaveScriptSheet: View {
                         onSave(title.trimmingCharacters(in: .whitespacesAndNewlines))
                         dismiss()
                     }
-                    .fontWeight(.semibold)
+                    .font(.system(size: 17, weight: .semibold))
                 }
             }
             .onAppear { title = initialTitle }
