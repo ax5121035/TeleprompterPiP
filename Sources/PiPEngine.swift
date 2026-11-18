@@ -37,12 +37,18 @@ final class PiPEngine: NSObject, ObservableObject {
     // MARK: - 渲染循环
     private var renderTimer: Timer?
     private var heartbeatTimer: Timer?
-    private var pixelBuffer: CVPixelBuffer?
+    // 三块缓冲轮转：单块缓冲会被「正在显示」和「正在绘制」同时占用，画面会撕裂/闪烁
+    private var pixelBuffers: [CVPixelBuffer] = []
+    private var bufferIndex = 0
     private var formatDescription: CMVideoFormatDescription?
     private var pts: CMTime = .zero
     private var lastRenderTime: CFTimeInterval = 0
     private var scrollOffset: CGFloat = 0
     private var lineHeight: CGFloat = 0
+
+    // 静音音频保活：切到相机后系统倾向于挂起 App，持续输出静音可提高后台存活率
+    private var audioEngine: AVAudioEngine?
+    private var silentPlayer: AVAudioPlayerNode?
 
     // 确保 PiP 源图层在视图层级中（系统要求 layer 必须渲染在屏幕上）
     private var hostingView: UIView?
@@ -126,6 +132,7 @@ final class PiPEngine: NSObject, ObservableObject {
     /// 关闭悬浮窗
     func stop() {
         pipController?.stopPictureInPicture()
+        stopSilentAudio()
     }
 
     func togglePlay() {
@@ -151,24 +158,30 @@ final class PiPEngine: NSObject, ObservableObject {
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = UIColor.black.cgColor
 
-        var buffer: CVPixelBuffer?
         let attributes: [CFString: Any] = [
             kCVPixelBufferIOSurfacePropertiesKey: [:],
             kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue as Any,
             kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue as Any
         ]
-        let status = CVPixelBufferCreate(
-            kCFAllocatorDefault, width, height,
-            kCVPixelFormatType_32BGRA,
-            attributes as CFDictionary, &buffer
-        )
-        guard status == kCVReturnSuccess, let buffer = buffer else { return }
-        pixelBuffer = buffer
 
+        // 预分配 3 块缓冲轮转使用
+        for _ in 0..<3 {
+            var buffer: CVPixelBuffer?
+            let status = CVPixelBufferCreate(
+                kCFAllocatorDefault, width, height,
+                kCVPixelFormatType_32BGRA,
+                attributes as CFDictionary, &buffer
+            )
+            if status == kCVReturnSuccess, let buffer = buffer {
+                pixelBuffers.append(buffer)
+            }
+        }
+
+        guard let first = pixelBuffers.first else { return }
         var desc: CMVideoFormatDescription?
         let descStatus = CMVideoFormatDescriptionCreateForImageBuffer(
             allocator: kCFAllocatorDefault,
-            imageBuffer: buffer,
+            imageBuffer: first,
             formatDescriptionOut: &desc
         )
         if descStatus == noErr { formatDescription = desc }
@@ -192,6 +205,44 @@ final class PiPEngine: NSObject, ObservableObject {
         // 用 playback 类别 + mixWithOthers，保证切到相机 App 后本 App 仍可后台推帧
         try? session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
         try? session.setActive(true)
+        startSilentAudio()
+    }
+
+    /// 持续输出静音，让 App 在切到相机后不被立刻挂起（画面才不会冻住）
+    private func startSilentAudio() {
+        guard audioEngine == nil else { return }
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2) else { return }
+
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 0
+
+        do {
+            try engine.start()
+        } catch {
+            return
+        }
+
+        let frames: AVAudioFrameCount = 4_410
+        guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else {
+            engine.stop()
+            return
+        }
+        silence.frameLength = frames
+        player.scheduleBuffer(silence, at: nil, options: .loops, completionHandler: nil)
+        player.play()
+
+        audioEngine = engine
+        silentPlayer = player
+    }
+
+    private func stopSilentAudio() {
+        silentPlayer?.stop()
+        audioEngine?.stop()
+        silentPlayer = nil
+        audioEngine = nil
     }
 
     // MARK: - 渲染循环
@@ -258,7 +309,7 @@ final class PiPEngine: NSObject, ObservableObject {
     }
 
     private func clampOffset() {
-        guard lineHeight > 0 else { return }
+        guard lineHeight > 0, !lines.isEmpty else { return }
         let contentHeight = CGFloat(lines.count) * lineHeight
         let maxOffset = contentHeight + CGFloat(height) / 2
         if scrollOffset > maxOffset {
@@ -275,7 +326,9 @@ final class PiPEngine: NSObject, ObservableObject {
     }
 
     private func enqueueFrame(at time: CMTime) {
-        guard let buffer = pixelBuffer, let format = formatDescription else { return }
+        guard !pixelBuffers.isEmpty, let format = formatDescription else { return }
+        let buffer = pixelBuffers[bufferIndex % pixelBuffers.count]
+        bufferIndex = (bufferIndex + 1) % pixelBuffers.count
 
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
@@ -428,6 +481,7 @@ extension PiPEngine: AVPictureInPictureControllerDelegate {
         isPiPActive = false
         isPlaying = false
         stopRendering()
+        stopSilentAudio()
     }
 
     func pictureInPictureController(
