@@ -1,0 +1,24 @@
+name: Build IPA mac15
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate --spec project.yml
+      - name: Build unsigned
+        run: |
+          xcodebuild -project TeleprompterPiP.xcodeproj -scheme TeleprompterPiP -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath ./DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER="" clean build
+      - name: Package
+        run: |
+          APP="$(find ./DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          mkdir -p Payload && cp -R "$APP" Payload/ && zip -qry TeleprompterPiP.ipa Payload && ls -lh TeleprompterPiP.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeleprompterPiP-mac15
+          path: TeleprompterPiP.ipa
+          retention-days: 90
