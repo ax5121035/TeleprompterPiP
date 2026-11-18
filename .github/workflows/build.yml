@@ -5,9 +5,16 @@ on:
 
 jobs:
   build:
-    # 2026-11-19 切换：macos-15-intel（Intel 池）连续 5 次 15 分钟拿不到机器，
-    # 改到 macos-15（arm64 池）再试。
-    runs-on: macos-15
+    name: build (${{ matrix.runner }})
+    # 2026-11-19：macOS hosted runner 容量紧张，单池排队 15 分钟常被取消。
+    # 改为两池并发排队，哪个先分到机器就在哪个池出包（fail-fast: false）。
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,6 +22,7 @@ jobs:
       - name: Show toolchain
         run: |
           sw_vers
+          uname -m
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
@@ -61,6 +69,6 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: TeleprompterPiP-unsigned
+          name: TeleprompterPiP-unsigned-${{ matrix.runner }}
           path: TeleprompterPiP.ipa
           retention-days: 90
