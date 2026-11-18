@@ -5,10 +5,18 @@ on:
 
 jobs:
   build:
+    # arm64 池（macos-latest / macos-15）在高峰期常常 15 分钟分不到机器，
+    # Intel 池（macos-15-intel）成功率更高。
     runs-on: macos-15-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -16,11 +24,12 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate --spec project.yml
 
-      - name: Show available SDKs
-        run: xcodebuild -showsdks
+      - name: Show project info
+        run: xcodebuild -list -project TeleprompterPiP.xcodeproj
 
       - name: Build (unsigned)
         run: |
+          set -o pipefail
           xcodebuild \
             -project TeleprompterPiP.xcodeproj \
             -scheme TeleprompterPiP \
@@ -38,7 +47,12 @@ jobs:
         run: |
           set -e
           APP_PATH="$(find ./DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::没有找到 .app 产物，编译未成功"
+            exit 1
+          fi
           echo "APP_PATH=$APP_PATH"
+          ls -la "$APP_PATH" | head -20
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           zip -qry TeleprompterPiP.ipa Payload
