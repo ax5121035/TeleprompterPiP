@@ -5,9 +5,9 @@ on:
 
 jobs:
   build:
-    # arm64 池（macos-latest / macos-15）在高峰期常常 15 分钟分不到机器，
-    # Intel 池（macos-15-intel）成功率更高。
-    runs-on: macos-15-intel
+    # 2026-11-19 切换：macos-15-intel（Intel 池）连续 5 次 15 分钟拿不到机器，
+    # 改到 macos-15（arm64 池）再试。
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
